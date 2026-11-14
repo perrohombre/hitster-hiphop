@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Hitster HH">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#111111">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <link rel="stylesheet" href="style.css">
+  <title>Hitster – Hip-Hop &amp; R&amp;B</title>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>HITSTER <span>Hip-Hop &amp; R&amp;B</span></h1>
+    <button id="btn-settings" class="icon-btn" aria-label="Ustawienia">⚙︎</button>
+  </header>
+
+  <main>
+    <!-- 1. Pierwsze uruchomienie: brak Client ID -->
+    <section id="view-setup" hidden>
+      <h2>Pierwsze uruchomienie</h2>
+      <ol class="steps">
+        <li>Wejdź na <b>developer.spotify.com/dashboard</b> i utwórz aplikację (Web API).</li>
+        <li>W polu <b>Redirect URI</b> wpisz dokładnie:<br><code id="redirect-uri-setup"></code>
+            <button id="btn-copy-redirect" class="small">Kopiuj</button></li>
+        <li>Skopiuj <b>Client ID</b> i wklej tutaj:</li>
+      </ol>
+      <input id="in-client-id" type="text" placeholder="Client ID" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <button id="btn-save-client" class="primary">Zapisz</button>
+      <p class="hint">Szczegóły krok po kroku są w pliku README.</p>
+    </section>
+
+    <!-- 2. Logowanie -->
+    <section id="view-login" hidden>
+      <h2>Zaloguj się do Spotify</h2>
+      <p>Potrzebne jest konto <b>Spotify Premium</b> – aplikacja steruje odtwarzaniem (jak pilot), a muzyka gra w aplikacji Spotify, na głośniku lub na komputerze.</p>
+      <button id="btn-login" class="primary">Zaloguj przez Spotify</button>
+    </section>
+
+    <!-- 3. Ekran główny -->
+    <section id="view-home" hidden>
+      <button id="btn-scan" class="primary huge">📷 Skanuj kartę</button>
+      <div class="row">
+        <input id="in-code" type="text" placeholder="…lub wpisz kod karty, np. HR-001" autocomplete="off" autocapitalize="characters" spellcheck="false">
+        <button id="btn-code" class="small">Graj</button>
+      </div>
+      <div class="device-box">
+        <label for="sel-device">Urządzenie do odtwarzania</label>
+        <div class="row">
+          <select id="sel-device"></select>
+          <button id="btn-devices" class="small" aria-label="Odśwież listę urządzeń">↻</button>
+        </div>
+        <p class="hint" id="device-hint"></p>
+      </div>
+    </section>
+
+    <!-- 4. Skaner -->
+    <section id="view-scan" hidden>
+      <div class="viewfinder">
+        <video id="video" playsinline muted autoplay></video>
+        <div class="frame"></div>
+      </div>
+      <p class="hint center" id="scan-hint">Wyceluj w kod QR na karcie</p>
+      <button id="btn-scan-cancel" class="secondary">Anuluj</button>
+    </section>
+
+    <!-- 5. Karta / odtwarzanie -->
+    <section id="view-card" hidden>
+      <div id="card-hidden" class="card hidden-card">
+        <div class="note" id="note-anim">♪</div>
+        <div id="card-status">Ładuję…</div>
+        <div class="hint" id="card-sub"></div>
+      </div>
+      <div id="card-revealed" class="card revealed-card" hidden>
+        <div class="artist" id="rv-artist"></div>
+        <div class="year" id="rv-year"></div>
+        <div class="title" id="rv-title"></div>
+        <div class="small-note" id="rv-note"></div>
+      </div>
+
+      <div class="controls">
+        <button id="btn-pause" class="ctrl">⏸ Pauza</button>
+        <button id="btn-restart" class="ctrl">↺ Od początku</button>
+      </div>
+      <button id="btn-reveal" class="secondary big">👁 Pokaż odpowiedź</button>
+      <button id="btn-next" class="primary big">📷 Następna karta</button>
+      <a id="lnk-open" class="link" target="_blank" rel="noopener" hidden>Otwórz utwór w aplikacji Spotify</a>
+    </section>
+  </main>
+
+  <dialog id="dlg-settings">
+    <form method="dialog">
+      <h2>Ustawienia</h2>
+
+      <label for="set-client-id">Client ID (Spotify)</label>
+      <input id="set-client-id" type="text" autocomplete="off" autocapitalize="off" spellcheck="false">
+
+      <label>Redirect URI (wpisz w panelu Spotify)</label>
+      <code id="redirect-uri-settings"></code>
+
+      <label for="set-start">Początek utworu</label>
+      <select id="set-start">
+        <option value="0">Od początku</option>
+        <option value="30">Od 0:30</option>
+        <option value="random">Losowo (0:20–1:10)</option>
+      </select>
+
+      <div class="row spread">
+        <button id="btn-logout" type="button" class="secondary">Wyloguj</button>
+        <button id="btn-clearcache" type="button" class="secondary">Wyczyść cache</button>
+      </div>
+      <div class="row spread">
+        <button id="btn-save-settings" value="save" class="primary">Zapisz</button>
+        <button value="cancel" class="secondary">Zamknij</button>
+      </div>
+      <p class="hint" id="build-info"></p>
+    </form>
+  </dialog>
+
+  <div id="toast" role="status" aria-live="polite"></div>
+</div>
+<script src="config.js"></script>
+<script src="jsQR.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
