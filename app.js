@@ -161,7 +161,7 @@
     }
     let pick = devs.find(d => d.id === state.deviceId) || devs.find(d => d.is_active) || devs[0];
     sel.value = pick.id; state.deviceId = pick.id; LS.set('deviceId', pick.id);
-    hint.textContent = 'Wskazówka: żeby nie widzieć tytułu na ekranie telefonu, graj na głośniku lub komputerze.';
+    hint.textContent = 'Najpewniej: graj na komputerze lub głośniku (bez spoilera tytułu). Na iPhonie zostaw w Spotify coś grającego – po pauzie iOS usypia Spotify.';
     if (!quiet) toast('Znaleziono urządzeń: ' + devs.length);
     return devs;
   }
@@ -215,11 +215,14 @@
     const off = startOffsetMs(); if (off > 0) body.position_ms = off;
     const r = await api('/me/player/play', { method: 'PUT', query: { device_id: state.deviceId }, body });
     if (r.ok) return { ok: true };
-    if (r.status === 404 || r.reason === 'NO_ACTIVE_DEVICE') {
-      if (attempt === 0 && state.deviceId) {            // spróbuj „obudzić” urządzenie
-        await api('/me/player', { method: 'PUT', body: { device_ids: [state.deviceId], play: false } });
-        await sleep(700);
-        return startPlayback(trackId, 1);
+    // 404 / NO_ACTIVE_DEVICE / 502 / 503: urządzenie jest na liście, ale Spotify nie może się do niego dostać
+    // (typowo: aplikacja Spotify na iPhonie uśpiona przez iOS w tle).
+    const unreachable = r.status === 404 || r.status === 502 || r.status === 503 || r.reason === 'NO_ACTIVE_DEVICE';
+    if (unreachable) {
+      if (attempt < 2 && state.deviceId) {
+        if (attempt === 0) await api('/me/player', { method: 'PUT', body: { device_ids: [state.deviceId], play: false } });
+        await sleep(attempt === 0 ? 700 : 1500);
+        return startPlayback(trackId, attempt + 1);
       }
       return { ok: false, code: 'NO_DEVICE' };
     }
@@ -239,16 +242,13 @@
     $('#card-status').textContent = 'Ładuję utwór…'; $('#card-sub').textContent = '';
     $('#note-anim').classList.remove('playing'); $('#btn-pause').textContent = '⏸ Pauza';
     $('#lnk-open').hidden = true;
+    state.needsRetry = false; $('#card-actions').hidden = true;
     keepAwake();
     try {
       const track = await resolveTrack(card);
       state.current.track = track;
       $('#lnk-open').href = 'https://open.spotify.com/track/' + track.id; $('#lnk-open').hidden = false;
-      const r = await startPlayback(track.id);
-      if (r.ok) {
-        $('#card-status').textContent = 'Gra… Gdzie to wstawisz na osi czasu?';
-        $('#note-anim').classList.add('playing');
-      } else explainPlaybackError(r);
+      onPlayResult(await startPlayback(track.id));
     } catch (e) {
       if (e.code === 'NO_AUTH') { toast('Zaloguj się ponownie do Spotify', true); route(); return; }
       if (e.code === 'NOT_FOUND') $('#card-status').textContent = 'Nie znaleziono tego utworu w Spotify';
@@ -259,16 +259,41 @@
         : 'Możesz zeskanować następną kartę – ta odpowiedź jest pod „Pokaż odpowiedź”.';
     }
   }
+  function onPlayResult(r) {
+    if (r.ok) {
+      state.needsRetry = false; $('#card-actions').hidden = true;
+      $('#card-status').textContent = 'Gra… Gdzie to wstawisz na osi czasu?'; $('#card-sub').textContent = '';
+      $('#note-anim').classList.add('playing');
+    } else explainPlaybackError(r);
+  }
+  let retrying = false;
+  async function retryPlay() {
+    if (retrying || !state.current || !state.current.track) return;
+    retrying = true; state.needsRetry = false; $('#card-actions').hidden = true;
+    $('#card-status').textContent = 'Próbuję ponownie…'; $('#card-sub').textContent = '';
+    try {
+      await loadDevices(true);
+      onPlayResult(await startPlayback(state.current.track.id));
+    } catch (e) {
+      if (e.code === 'NO_AUTH') { toast('Zaloguj się ponownie do Spotify', true); route(); return; }
+      onPlayResult({ ok: false, code: 'OTHER', message: e.message });
+    } finally { retrying = false; }
+  }
   function explainPlaybackError(r) {
     const s = $('#card-status'), sub = $('#card-sub');
     if (r.code === 'NO_DEVICE') {
-      s.textContent = 'Brak aktywnego urządzenia';
-      sub.textContent = 'Otwórz aplikację Spotify na wybranym urządzeniu, włącz cokolwiek na sekundę, wróć tu i wybierz urządzenie na ekranie głównym (↻).';
+      s.textContent = 'Spotify nie odpowiada';
+      sub.textContent = 'iPhone usypia Spotify w tle. Stuknij „Obudź Spotify”, a gdy się otworzy – wróć tutaj; utwór włączy się sam. '
+        + 'Najpewniej działa granie na komputerze lub głośniku.';
+      state.needsRetry = true; $('#card-actions').hidden = false;
     } else if (r.code === 'PREMIUM') {
       s.textContent = 'Potrzebne Spotify Premium'; sub.textContent = 'Sterowanie odtwarzaniem działa tylko na koncie Premium. Możesz użyć linku „Otwórz utwór w aplikacji Spotify”.';
     } else if (r.code === 'FORBIDDEN') {
       s.textContent = 'Spotify odmówiło dostępu'; sub.textContent = (r.message || '') + ' Sprawdź, czy konto jest na liście użytkowników aplikacji w panelu Spotify.';
-    } else { s.textContent = 'Nie udało się odtworzyć'; sub.textContent = r.message || ''; }
+    } else {
+      s.textContent = 'Nie udało się odtworzyć'; sub.textContent = r.message || '';
+      state.needsRetry = true; $('#card-actions').hidden = false;
+    }
   }
 
   async function togglePause() {
@@ -398,6 +423,7 @@
     $('#btn-pause').onclick = togglePause;
     $('#btn-restart').onclick = restart;
     $('#btn-reveal').onclick = reveal;
+    $('#btn-retry').onclick = retryPlay;
     $('#btn-next').onclick = startScan;
     $('#btn-logout').onclick = () => { $('#dlg-settings').close(); logout(); };
     $('#btn-clearcache').onclick = () => { state.resolved = {}; LS.del('resolved'); toast('Wyczyszczono cache dopasowań'); };
@@ -410,7 +436,10 @@
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) { stopScan(); return; }
       if (currentView === 'scan') startScan();
-      else if (currentView === 'card' && !state.wakeLock) keepAwake();
+      else if (currentView === 'card') {
+        if (!state.wakeLock) keepAwake();
+        if (state.needsRetry) setTimeout(retryPlay, 400);   // wróciliśmy z aplikacji Spotify
+      }
     });
 
     await handleRedirect();

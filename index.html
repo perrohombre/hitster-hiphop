@@ -75,6 +75,10 @@
         <div class="note" id="note-anim">♪</div>
         <div id="card-status">Ładuję…</div>
         <div class="hint" id="card-sub"></div>
+        <div id="card-actions" class="controls" hidden>
+          <button id="btn-wake" class="ctrl primary" type="button" onclick="location.href='spotify:'">Obudź Spotify</button>
+          <button id="btn-retry" class="ctrl" type="button">↻ Spróbuj ponownie</button>
+        </div>
       </div>
       <div id="card-revealed" class="card revealed-card" hidden>
         <div class="artist" id="rv-artist"></div>
@@ -126,6 +130,6 @@
 </div>
 <script src="config.js?v=2"></script>
 <script src="jsQR.js"></script>
-<script src="app.js?v=2"></script>
+<script src="app.js?v=3"></script>
 </body>
 </html>
